@@ -53,11 +53,19 @@ def simplify_permissions(permissions: dict) -> dict | list[dict | str]:
     return result_dict
 
 
+def safe_name(name: str) -> str:
+    name = name.replace("-", "_")
+    if name == "*":
+        name = "__"
+
+    return name
+
+
 def generate_pyi(name: str, permissions: Any, indent: int = 0) -> str:
     """Generate classes by permissions schema"""
     indent_space = " " * (4 * indent)
     inner_ident = " " * (4 * (indent + 1))
-    result = f"{indent_space}class {name}:\n"
+    result = f"{indent_space}class {name}(Permission):\n"
 
     if isinstance(permissions, dict) and indent == 0:
         permissions = simplify_permissions(permissions)
@@ -65,21 +73,17 @@ def generate_pyi(name: str, permissions: Any, indent: int = 0) -> str:
     if isinstance(permissions, list):
         for item in permissions:
             if isinstance(item, str):
-                item_name = item.replace("-", "_")
-                if item_name == "*":
-                    item_name = "_"
-                result += inner_ident + f"{item_name}: str\n"
+                result += inner_ident + f"{safe_name(item)}: Permission\n"
             elif isinstance(item, dict):
                 if not result.endswith("\n\n") and not result.endswith(":\n"):
                     result += "\n"
                 for sub_key, sub_value in item.items():
-                    result += generate_pyi(sub_key.replace("-", "_"), sub_value, indent + 1)
+                    sub_key = safe_name(sub_key)
+                    result += generate_pyi(sub_key, sub_value, indent + 1)
 
     elif isinstance(permissions, dict):
         for key, value in permissions.items():
-            if key == "*":
-                key = "_"
-            key = key.replace("-", "_")
+            key = safe_name(key)
 
             if isinstance(value, (list, dict)):
                 if not result.endswith("\n\n") and not result.endswith(":\n"):
@@ -87,7 +91,7 @@ def generate_pyi(name: str, permissions: Any, indent: int = 0) -> str:
                 result += generate_pyi(key, value, indent + 1)
 
             elif isinstance(value, str):
-                result += inner_ident + f"{key}: str\n"
+                result += inner_ident + f"{key}: Permission\n"
     else:
         result += f"{indent_space}    pass\n"
 
@@ -101,11 +105,26 @@ def generate_pyi_file(permissions: Any, output_file: str):
     """Generate .pyi file by permissions schema"""
     header = """# ==================== PERMISSIONS ====================
     # THIS IS GENERATED CODE FOR HELP IDE TO UNDERSTAND PERMISSIONS
-    # ==================== PERMISSIONS ===================="""
+    # ==================== PERMISSIONS ====================
+    
+    
+    class Permission:
+        parts: tuple[str, ...]
+    
+        def match(self, permission: str | "Permission") -> bool: ...
+        def sub(self, permission: str | tuple[str, ...]) -> "Permission": ...
+        def __getitem__(self, item: str) -> "Permission": ...\n\n"""
 
-    main_class = generate_pyi("permissions", permissions)
+    main_class = generate_pyi("root", permissions)
     content = "".join(
-        ["\n".join(line.strip() for line in header.splitlines()), "\n\n", main_class[:-1]]
+        [
+            "\n".join(line.removeprefix("    ") for line in header.splitlines()),
+            "\n\n",
+            main_class[:-1],
+            "\n\n",
+            "permissions = root()"
+        ]
     )
+
 
     Path(output_file).write_text(content)
