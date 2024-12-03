@@ -1,10 +1,15 @@
 from typing import Any
 from pathlib import Path
+from collections.abc import Sequence
 
 
-def generate_permission(parts: list[str], extra: list[int]):
+def generate_permission(parts: Sequence[str], extra: Sequence[int]):
     """Generate permission by parts and extra"""
-    return ".".join(parts) + "[" + ",".join(map(str, extra)) + "]"
+    body = ".".join(parts)
+    if extra:
+        body += "[" + ",".join(map(str, extra)) + "]"
+
+    return body
 
 
 def generate_permissions(permissions: dict | list) -> str:
@@ -111,7 +116,8 @@ def generate_pyi_file(permissions: Any, output_file: str):
     class Permission:
         parts: tuple[str, ...]
     
-        def match(self, permission: str | "Permission") -> bool: ...
+        def match(self, permission: str | "Permission" | tuple[str, ...]) -> bool: ...
+        def satisfies(self, permission: str | "Permission" | tuple[str, ...]) -> bool: ...
         def sub(self, permission: str | tuple[str, ...]) -> "Permission": ...
         def __getitem__(self, item: str) -> "Permission": ...\n\n"""
 
@@ -122,9 +128,8 @@ def generate_pyi_file(permissions: Any, output_file: str):
             "\n\n",
             main_class[:-1],
             "\n\n",
-            "permissions = root()"
+            "permissions = root()",
         ]
     )
-
 
     Path(output_file).write_text(content)
